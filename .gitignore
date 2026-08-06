@@ -1,0 +1,10 @@
+# Compiled binaries
+vaultfs
+
+# Object files and directories
+obj/
+*.o
+
+# OS specific files
+.DS_Store
+Thumbs.db
