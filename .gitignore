@@ -1,0 +1,7 @@
+# Build artifacts
+*.o
+encfs
+test_crypto
+
+# Local tool state
+.freebuff/
