@@ -52,6 +52,8 @@ make test-fs        # mount + file-operation integration tests only
 FUSE/
 ├── Makefile
 ├── README.md
+├── CONTRIBUTING.md
+├── assignments.md
 ├── include/
 │   ├── encfs.h
 │   ├── crypto.h
@@ -65,7 +67,19 @@ FUSE/
 │   ├── test_crypto.c
 │   └── test_fs.sh
 └── docs/
-    └── design.md
+    ├── design.md
+    └── tasks.md
 ```
 
-See `assignments.md` for the per-person implementation problems.
+## Working on this project
+
+- Read [docs/design.md](docs/design.md) first — architecture, on-disk
+  format, key management, and threat model.
+- Implementation work is tracked as [GitHub
+  Issues](https://github.com/jpsiddharth2008/cryptovault-fs/issues), broken
+  into small, dependency-ordered tasks. [docs/tasks.md](docs/tasks.md) has
+  the full dependency graph; [assignments.md](assignments.md) has a
+  suggested split across a 4-person team.
+- Before writing any code, read [CONTRIBUTING.md](CONTRIBUTING.md) — it
+  covers branch naming, commit style, and the pull request / review rules
+  everyone on the team follows.

@@ -1,5 +1,14 @@
 # EncFS — Team Assignments
 
+> **The detailed, up-to-date version of every task below is tracked as a
+> [GitHub Issue](https://github.com/jpsiddharth2008/cryptovault-fs/issues)**,
+> with a full explanation, step-by-step approach, and dependency notes for
+> each one. This file is a quick-reference summary of who works on what —
+> if this file and the issues ever disagree, the issues win. See
+> [docs/tasks.md](docs/tasks.md) for the full dependency graph, and
+> [CONTRIBUTING.md](CONTRIBUTING.md) for how to branch, commit, and open a
+> PR for the issue you pick up.
+
 Everyone works against the same skeleton. Function signatures are already
 fixed in the headers so your pieces plug together without renegotiating
 interfaces later. Work each problem out from the signature, the comments,
@@ -135,11 +144,17 @@ Work through:
 
 ## Combining everyone's work
 
-1. Start in parallel — no one needs to wait to begin.
-2. Person 1 should finish first if possible: Q1/Q2 don't depend on FUSE at
-   all, and `make test-crypto` gives immediate pass/fail feedback.
+1. Each problem above corresponds to one GitHub Issue — pick one, assign
+   yourself to it, and open a branch named per
+   [CONTRIBUTING.md](CONTRIBUTING.md)'s convention
+   (`feat/<issue-number>-<short-description>`).
+2. Person 1 should finish first if possible: Q1/Q2 (issues #3, #4) don't
+   depend on FUSE at all, and `make test-crypto` gives immediate pass/fail
+   feedback.
 3. Person 3 and Person 4 both call Person 1's functions — coordinate on
-   when that's ready.
-4. Once everything compiles, `make` builds the real binary and
+   when issues #3/#4 are merged to `main` before building on them.
+4. Open a pull request per issue (`Closes #<issue-number>`), get one
+   review approval, and squash-merge — don't push directly to `main`.
+5. Once everything compiles, `make` builds the real binary and
    `make test-fs` runs the full mount/write/read/diff integration script —
    that's when bugs from mismatched assumptions between people surface.

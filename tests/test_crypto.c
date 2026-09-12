@@ -2,8 +2,9 @@
  * and checks it matches, plus checks that tampering is detected.
  *
  * Build/run: make test-crypto && ./test_crypto
- * This will link-fail until encfs_encrypt/encfs_decrypt are implemented —
- * that's expected until Person 1's part is done. */
+ * encfs_encrypt/encfs_decrypt are currently stubs that just return -1
+ * (see issues #3 and #4), so every check here will print FAIL until
+ * they're implemented — that's expected, not a bug in this test file. */
 
 #include "crypto.h"
 #include <stdio.h>
