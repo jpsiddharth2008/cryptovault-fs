@@ -14,11 +14,19 @@
  */
 int encfs_encrypt(const unsigned char *plaintext, size_t plaintext_len,
                    unsigned char *out_backing_data, const unsigned char *key) {
-    (void) plaintext;
-    (void) plaintext_len;
-    (void) out_backing_data;
-    (void) key;
-    return -1;
+    /* 1. Generate a fresh random nonce and write it to the front of the buffer */
+    randombytes_buf(out_backing_data, NONCE_SIZE);
+
+    /* 2. Encrypt plaintext into the bytes right after the nonce.
+     *    crypto_secretbox_easy writes ciphertext + MAC (plaintext_len + MAC_SIZE bytes)
+     *    using the nonce we just generated and the caller's key. */
+    if (crypto_secretbox_easy(out_backing_data + NONCE_SIZE,
+                              plaintext, plaintext_len,
+                              out_backing_data, key) != 0) {
+        return -1;
+    }
+
+    return 0;
 }
 
 int encfs_decrypt(const unsigned char *backing_data, size_t backing_len,
