@@ -57,30 +57,39 @@ static int encfs_unlink(const char *path) {
     return -ENOSYS;
 }
 
-/* TODO (issue #9): translate path, call chmod() on the backing path. */
 static int encfs_chmod(const char *path, mode_t mode, struct fuse_file_info *fi) {
-    (void) path;
-    (void) mode;
     (void) fi;
-    return -ENOSYS;
+    char backing_path[PATH_MAX];
+    get_backing_path(backing_path, path);
+
+    if (chmod(backing_path, mode) != 0) {
+        return -errno;
+    }
+    return 0;
 }
 
-/* TODO (issue #9): translate path, call lchown() on the backing path
- * (lchown, not chown -- think about why, re: symlinks). */
+/* lchown, not chown -- if backing_path is a symlink, we want to change the
+ * link's own ownership rather than following it. */
 static int encfs_chown(const char *path, uid_t uid, gid_t gid, struct fuse_file_info *fi) {
-    (void) path;
-    (void) uid;
-    (void) gid;
     (void) fi;
-    return -ENOSYS;
+    char backing_path[PATH_MAX];
+    get_backing_path(backing_path, path);
+
+    if (lchown(backing_path, uid, gid) != 0) {
+        return -errno;
+    }
+    return 0;
 }
 
-/* TODO (issue #9): translate path, call utimensat() on the backing path. */
 static int encfs_utimens(const char *path, const struct timespec tv[2], struct fuse_file_info *fi) {
-    (void) path;
-    (void) tv;
     (void) fi;
-    return -ENOSYS;
+    char backing_path[PATH_MAX];
+    get_backing_path(backing_path, path);
+
+    if (utimensat(AT_FDCWD, backing_path, tv, 0) != 0) {
+        return -errno;
+    }
+    return 0;
 }
 
 /* ===== File handles & read (issues #10-#12) ===== */
