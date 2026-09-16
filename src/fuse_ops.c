@@ -18,10 +18,23 @@
  * CRYPTO_OVERHEAD (the encrypted file is bigger than the plaintext by
  * NONCE_SIZE + MAC_SIZE bytes) -- clamp to 0 rather than going negative. */
 static int encfs_getattr(const char *path, struct stat *st, struct fuse_file_info *fi) {
-    (void) path;
-    (void) st;
     (void) fi;
-    return -ENOSYS;
+    char backing_path[PATH_MAX];
+    get_backing_path(backing_path, path);
+
+    if (lstat(backing_path, st) == -1) {
+        return -errno;
+    }
+
+    if (S_ISREG(st->st_mode)) {
+        if (st->st_size >= (off_t) CRYPTO_OVERHEAD) {
+            st->st_size -= CRYPTO_OVERHEAD;
+        } else {
+            st->st_size = 0;
+        }
+    }
+
+    return 0;
 }
 
 /* TODO (issue #7): open the backing directory, loop readdir() over it,
@@ -29,13 +42,28 @@ static int encfs_getattr(const char *path, struct stat *st, struct fuse_file_inf
 static int encfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                           off_t offset, struct fuse_file_info *fi,
                           enum fuse_readdir_flags flags) {
-    (void) path;
-    (void) buf;
-    (void) filler;
     (void) offset;
     (void) fi;
     (void) flags;
-    return -ENOSYS;
+
+    char backing_path[PATH_MAX];
+    get_backing_path(backing_path, path);
+
+    DIR *dp = opendir(backing_path);
+    if (dp == NULL) {
+        return -errno;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dp)) != NULL) {
+        if (filler(buf, entry->d_name, NULL, 0, 0) != 0) {
+            closedir(dp);
+            return -ENOMEM;
+        }
+    }
+
+    closedir(dp);
+    return 0;
 }
 
 /* TODO (issue #8): translate path, call mkdir() on the backing path. */
