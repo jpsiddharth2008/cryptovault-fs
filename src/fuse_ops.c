@@ -38,23 +38,37 @@ static int encfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     return -ENOSYS;
 }
 
-/* TODO (issue #8): translate path, call mkdir() on the backing path. */
+/* Implements encfs_mkdir: creates a directory in the backing store. */
 static int encfs_mkdir(const char *path, mode_t mode) {
-    (void) path;
-    (void) mode;
-    return -ENOSYS;
+    char backing[PATH_MAX];
+    get_backing_path(backing, path);
+
+    if (mkdir(backing, mode) == -1)
+        return -errno;
+
+    return 0;
 }
 
-/* TODO (issue #8): translate path, call rmdir() on the backing path. */
+/* Implements encfs_rmdir: removes an empty directory from the backing store. */
 static int encfs_rmdir(const char *path) {
-    (void) path;
-    return -ENOSYS;
+    char backing[PATH_MAX];
+    get_backing_path(backing, path);
+
+    if (rmdir(backing) == -1)
+        return -errno;
+
+    return 0;
 }
 
-/* TODO (issue #8): translate path, call unlink() on the backing path. */
+/* Implements encfs_unlink: deletes a file from the backing store. */
 static int encfs_unlink(const char *path) {
-    (void) path;
-    return -ENOSYS;
+    char backing[PATH_MAX];
+    get_backing_path(backing, path);
+
+    if (unlink(backing) == -1)
+        return -errno;
+
+    return 0;
 }
 
 /* TODO (issue #9): translate path, call chmod() on the backing path. */
