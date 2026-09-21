@@ -216,14 +216,97 @@ static int encfs_read(const char *path, char *buf, size_t size, off_t offset,
  * edit in memory at `offset` (zero-pad any gap for a sparse write past
  * current EOF) -> re-encrypt the WHOLE result with a FRESH nonce ->
  * overwrite the backing file entirely. Return `size` on success. */
+/* Every write re-encrypts the WHOLE file: decrypt what's currently on
+ * disk, apply this write's edit in plaintext memory, re-encrypt the
+ * entire result with a fresh nonce, then overwrite the backing file. */
 static int encfs_write(const char *path, const char *buf, size_t size, off_t offset,
                         struct fuse_file_info *fi) {
     (void) path;
-    (void) buf;
-    (void) size;
-    (void) offset;
-    (void) fi;
-    return -ENOSYS;
+    int fd = (int) fi->fh;
+
+    /* How big is the encrypted blob currently sitting on disk? */
+    struct stat st;
+    if (fstat(fd, &st) == -1) {
+        return -errno;
+    }
+    size_t backing_len = (size_t) st.st_size;
+
+    /* Read + decrypt the file's CURRENT full contents (empty file -> empty plaintext). */
+    size_t old_plain_len = 0;
+    unsigned char *old_plain = NULL;
+
+    if (backing_len > 0) {
+        unsigned char *backing_buf = malloc(backing_len);
+        if (backing_buf == NULL) {
+            return -ENOMEM;
+        }
+        if (pread(fd, backing_buf, backing_len, 0) != (ssize_t) backing_len) {
+            free(backing_buf);
+            return -EIO;
+        }
+
+        old_plain_len = backing_len - CRYPTO_OVERHEAD;
+        old_plain = malloc(old_plain_len);
+        if (old_plain == NULL) {
+            free(backing_buf);
+            return -ENOMEM;
+        }
+        if (encfs_decrypt(backing_buf, backing_len, old_plain, ENCFS_CTX->key) != 0) {
+            free(backing_buf);
+            free(old_plain);
+            return -EIO;
+        }
+        free(backing_buf);
+    }
+
+    /* New plaintext length: at least offset+size, or the old length if that's bigger. */
+    size_t new_len = (size_t) offset + size;
+    if (old_plain_len > new_len) {
+        new_len = old_plain_len;
+    }
+
+    /* calloc zero-fills the buffer for us -- this handles the "gap" case
+     * (a sparse write past the old end of file) for free. */
+    unsigned char *new_plain = calloc(1, new_len > 0 ? new_len : 1);
+    if (new_plain == NULL) {
+        free(old_plain);
+        return -ENOMEM;
+    }
+
+    if (old_plain_len > 0) {
+        memcpy(new_plain, old_plain, old_plain_len);
+    }
+    free(old_plain);
+
+    /* Drop the caller's new bytes in at the requested offset. */
+    memcpy(new_plain + offset, buf, size);
+
+    /* Re-encrypt the ENTIRE new plaintext with a brand-new nonce. */
+    size_t new_backing_len = new_len + CRYPTO_OVERHEAD;
+    unsigned char *new_backing = malloc(new_backing_len);
+    if (new_backing == NULL) {
+        free(new_plain);
+        return -ENOMEM;
+    }
+    if (encfs_encrypt(new_plain, new_len, new_backing, ENCFS_CTX->key) != 0) {
+        free(new_plain);
+        free(new_backing);
+        return -EIO;
+    }
+    free(new_plain);
+
+    /* Overwrite the backing file entirely, then trim off any leftover old bytes. */
+    if (pwrite(fd, new_backing, new_backing_len, 0) != (ssize_t) new_backing_len) {
+        free(new_backing);
+        return -EIO;
+    }
+    free(new_backing);
+
+    if (ftruncate(fd, (off_t) new_backing_len) == -1) {
+        return -errno;
+    }
+
+    return (int) size;
 }
 
 /* TODO (issue #14): same decrypt -> modify -> re-encrypt -> rewrite pattern
