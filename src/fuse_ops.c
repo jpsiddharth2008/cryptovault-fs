@@ -136,22 +136,34 @@ static int encfs_utimens(const char *path, const struct timespec tv[2], struct f
 
 /* ===== File handles & read (issues #10-#12) ===== */
 
-/* TODO (issue #10): translate path, open(backing, O_CREAT|O_RDWR, mode),
- * stash the resulting fd in fi->fh for read/write/release to reuse. */
+/* Implements encfs_create: called when a brand-new file is being made.
+ * Opens the backing file with O_CREAT|O_RDWR and stashes the fd in fi->fh
+ * so that later read/write/release calls can retrieve it without re-opening. */
 static int encfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
-    (void) path;
-    (void) mode;
-    (void) fi;
-    return -ENOSYS;
+    char backing[PATH_MAX];
+    get_backing_path(backing, path);
+
+    int fd = open(backing, O_CREAT | O_RDWR, mode);
+    if (fd == -1)
+        return -errno;
+
+    fi->fh = fd;
+    return 0;
 }
 
-/* TODO (issue #10): translate path, open(backing, O_RDWR), stash the fd
- * in fi->fh. Note: an incoming O_WRONLY should be upgraded to O_RDWR,
- * since writes need to read+decrypt the existing content first. */
+/* Implements encfs_open: called when an existing file is being opened.
+ * Always opens O_RDWR — even if the caller only asked for O_WRONLY —
+ * because every write must first read+decrypt the current file contents. */
 static int encfs_open(const char *path, struct fuse_file_info *fi) {
-    (void) path;
-    (void) fi;
-    return -ENOSYS;
+    char backing[PATH_MAX];
+    get_backing_path(backing, path);
+
+    int fd = open(backing, O_RDWR);
+    if (fd == -1)
+        return -errno;
+
+    fi->fh = fd;
+    return 0;
 }
 
 static int encfs_release(const char *path, struct fuse_file_info *fi) {
