@@ -146,18 +146,68 @@ static int encfs_release(const char *path, struct fuse_file_info *fi) {
     return 0;
 }
 
-/* TODO (issue #12): read the FULL encrypted blob from fi->fh, decrypt the
- * whole thing (encfs_decrypt), then copy out just [offset, offset+size)
- * of the resulting plaintext into buf. Handle offset at/past EOF, and
- * offset+size past EOF. Return the number of bytes actually copied. */
 static int encfs_read(const char *path, char *buf, size_t size, off_t offset,
                        struct fuse_file_info *fi) {
     (void) path;
-    (void) buf;
-    (void) size;
-    (void) offset;
-    (void) fi;
-    return -ENOSYS;
+
+    struct stat st;
+    if (fstat(fi->fh, &st) != 0) {
+        return -errno;
+    }
+
+    /* A freshly created file has no encrypted blob yet: empty plaintext. */
+    if (st.st_size == 0) {
+        return 0;
+    }
+    if (st.st_size < (off_t) CRYPTO_OVERHEAD) {
+        return -EIO;
+    }
+
+    size_t backing_len = (size_t) st.st_size;
+    size_t plaintext_len = backing_len - CRYPTO_OVERHEAD;
+
+    unsigned char *backing = malloc(backing_len);
+    unsigned char *plaintext = malloc(plaintext_len > 0 ? plaintext_len : 1);
+    if (backing == NULL || plaintext == NULL) {
+        free(backing);
+        free(plaintext);
+        return -ENOMEM;
+    }
+
+    size_t got = 0;
+    while (got < backing_len) {
+        ssize_t n = pread(fi->fh, backing + got, backing_len - got, (off_t) got);
+        if (n < 0) {
+            int err = errno;
+            free(backing);
+            free(plaintext);
+            return -err;
+        }
+        if (n == 0) {
+            break;
+        }
+        got += (size_t) n;
+    }
+
+    int rc = (got == backing_len)
+        ? encfs_decrypt(backing, backing_len, plaintext, ENCFS_CTX->key)
+        : -1;
+    free(backing);
+    if (rc != 0) {
+        free(plaintext);
+        return -EIO;
+    }
+
+    int copied = 0;
+    if (offset >= 0 && (size_t) offset < plaintext_len) {
+        size_t avail = plaintext_len - (size_t) offset;
+        size_t n = size < avail ? size : avail;
+        memcpy(buf, plaintext + offset, n);
+        copied = (int) n;
+    }
+
+    free(plaintext);
+    return copied;
 }
 
 /* ===== Write & truncate (issues #13-#14) ===== */
