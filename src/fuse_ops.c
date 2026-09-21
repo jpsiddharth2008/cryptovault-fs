@@ -103,11 +103,13 @@ static int encfs_open(const char *path, struct fuse_file_info *fi) {
     return -ENOSYS;
 }
 
-/* TODO (issue #11): close the fd stored in fi->fh by create/open. */
+/* Implements encfs_release: called when a program closes a file.
+ * Closes the fd that was opened in encfs_create/encfs_open and stashed
+ * in fi->fh. Without this, every open leaks a file descriptor. */
 static int encfs_release(const char *path, struct fuse_file_info *fi) {
     (void) path;
-    (void) fi;
-    return -ENOSYS;
+    close(fi->fh);
+    return 0;
 }
 
 /* TODO (issue #12): read the FULL encrypted blob from fi->fh, decrypt the
