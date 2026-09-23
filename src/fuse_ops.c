@@ -339,11 +339,98 @@ static int encfs_write(const char *path, const char *buf, size_t size, off_t off
  * as write, but the modification is padding with zeros (growing) or
  * cutting off (shrinking) to reach exactly `size` bytes. Special-case
  * size == 0 -- no need to decrypt anything first in that case. */
+/* Same decrypt -> modify -> re-encrypt -> rewrite pattern as encfs_write,
+ * except the "modification" here is padding with zeros (growing the file)
+ * or cutting off bytes (shrinking it) to land on exactly `size` bytes. */
 static int encfs_truncate(const char *path, off_t size, struct fuse_file_info *fi) {
     (void) path;
-    (void) size;
-    (void) fi;
-    return -ENOSYS;
+    int fd = (int) fi->fh;
+
+    /* Truncating to empty needs no decrypt/re-encrypt at all. */
+    if (size == 0) {
+        if (ftruncate(fd, 0) == -1) {
+            return -errno;
+        }
+        return 0;
+    }
+
+    /* How big is the encrypted blob currently sitting on disk? */
+    struct stat st;
+    if (fstat(fd, &st) == -1) {
+        return -errno;
+    }
+    size_t backing_len = (size_t) st.st_size;
+
+    /* Decrypt the file's current full contents. */
+    size_t old_plain_len = 0;
+    unsigned char *old_plain = NULL;
+
+    if (backing_len > 0) {
+        unsigned char *backing_buf = malloc(backing_len);
+        if (backing_buf == NULL) {
+            return -ENOMEM;
+        }
+        if (pread(fd, backing_buf, backing_len, 0) != (ssize_t) backing_len) {
+            free(backing_buf);
+            return -EIO;
+        }
+
+        old_plain_len = backing_len - CRYPTO_OVERHEAD;
+        old_plain = malloc(old_plain_len);
+        if (old_plain == NULL) {
+            free(backing_buf);
+            return -ENOMEM;
+        }
+        if (encfs_decrypt(backing_buf, backing_len, old_plain, ENCFS_CTX->key) != 0) {
+            free(backing_buf);
+            free(old_plain);
+            return -EIO;
+        }
+        free(backing_buf);
+    }
+
+    size_t new_len = (size_t) size;
+
+    /* calloc zero-fills -- this is what "pads with zeros" when growing. */
+    unsigned char *new_plain = calloc(1, new_len);
+    if (new_plain == NULL) {
+        free(old_plain);
+        return -ENOMEM;
+    }
+
+    /* Copy over the old data, but never more than new_len bytes -- this is
+     * what performs the "cut off" when shrinking. */
+    size_t copy_len = old_plain_len < new_len ? old_plain_len : new_len;
+    if (copy_len > 0) {
+        memcpy(new_plain, old_plain, copy_len);
+    }
+    free(old_plain);
+
+    /* Re-encrypt the entire new plaintext with a fresh nonce. */
+    size_t new_backing_len = new_len + CRYPTO_OVERHEAD;
+    unsigned char *new_backing = malloc(new_backing_len);
+    if (new_backing == NULL) {
+        free(new_plain);
+        return -ENOMEM;
+    }
+    if (encfs_encrypt(new_plain, new_len, new_backing, ENCFS_CTX->key) != 0) {
+        free(new_plain);
+        free(new_backing);
+        return -EIO;
+    }
+    free(new_plain);
+
+    if (pwrite(fd, new_backing, new_backing_len, 0) != (ssize_t) new_backing_len) {
+        free(new_backing);
+        return -EIO;
+    }
+    free(new_backing);
+
+    if (ftruncate(fd, (off_t) new_backing_len) == -1) {
+        return -errno;
+    }
+
+    return 0;
 }
 
 /* ===== Wiring (issue #16) =====
@@ -352,4 +439,19 @@ static int encfs_truncate(const char *path, off_t size, struct fuse_file_info *f
  * e.g. .getattr = encfs_getattr, .read = encfs_read, etc. Until every
  * field is wired up, FUSE has no way to route a syscall to your function
  * even if that function is fully correct. */
-struct fuse_operations encfs_oper = {0};
+struct fuse_operations encfs_oper = {
+    .getattr  = encfs_getattr,
+    .readdir  = encfs_readdir,
+    .mkdir    = encfs_mkdir,
+    .rmdir    = encfs_rmdir,
+    .unlink   = encfs_unlink,
+    .chmod    = encfs_chmod,
+    .chown    = encfs_chown,
+    .utimens  = encfs_utimens,
+    .create   = encfs_create,
+    .open     = encfs_open,
+    .release  = encfs_release,
+    .read     = encfs_read,
+    .write    = encfs_write,
+    .truncate = encfs_truncate,
+};

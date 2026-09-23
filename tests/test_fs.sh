@@ -23,6 +23,7 @@ echo "Mount point: $MOUNT"
 "$BINARY" "$BACKING" "$MOUNT" -f &
 FS_PID=$!
 sleep 1
+mountpoint -q "$MOUNT" || { echo "[FAIL] filesystem did not mount"; exit 1; }
 
 check() {
     if [ "$2" = "0" ]; then
