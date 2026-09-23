@@ -439,4 +439,19 @@ static int encfs_truncate(const char *path, off_t size, struct fuse_file_info *f
  * e.g. .getattr = encfs_getattr, .read = encfs_read, etc. Until every
  * field is wired up, FUSE has no way to route a syscall to your function
  * even if that function is fully correct. */
-struct fuse_operations encfs_oper = {0};
+struct fuse_operations encfs_oper = {
+    .getattr  = encfs_getattr,
+    .readdir  = encfs_readdir,
+    .mkdir    = encfs_mkdir,
+    .rmdir    = encfs_rmdir,
+    .unlink   = encfs_unlink,
+    .chmod    = encfs_chmod,
+    .chown    = encfs_chown,
+    .utimens  = encfs_utimens,
+    .create   = encfs_create,
+    .open     = encfs_open,
+    .release  = encfs_release,
+    .read     = encfs_read,
+    .write    = encfs_write,
+    .truncate = encfs_truncate,
+};
