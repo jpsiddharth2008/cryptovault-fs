@@ -34,8 +34,55 @@
  * plain command-line argument would be.
  */
 int main(int argc, char *argv[]) {
-    (void) argc;
-    (void) argv;
-    fprintf(stderr, "encfs: not yet implemented (see GitHub issue #15)\n");
-    return 1;
+    /* libsodium must be initialized before any other libsodium call. */
+    if (sodium_init() < 0) {
+        fprintf(stderr, "encfs: failed to initialize libsodium\n");
+        return 1;
+    }
+
+    if (argc < 3) {
+        fprintf(stderr, "Usage: %s <backing_dir> <mountpoint> [FUSE options]\n", argv[0]);
+        return 1;
+    }
+
+    struct encfs_context ctx;
+
+    /* Resolve backing_dir to an absolute path now -- a relative path could
+     * silently mean something different once FUSE callbacks are running
+     * from a different working directory. */
+    if (realpath(argv[1], ctx.backing_path) == NULL) {
+        perror("encfs: realpath");
+        return 1;
+    }
+
+    /* Prefer VAULT_KEY (an env var, not a command-line argument, so it
+     * doesn't leak to anyone running `ps aux`); fall back to a hidden
+     * interactive prompt if it isn't set. */
+    char *passphrase = getenv("VAULT_KEY");
+    if (passphrase == NULL) {
+        passphrase = getpass("Passphrase: ");
+    }
+
+    if (passphrase == NULL || strlen(passphrase) == 0) {
+        fprintf(stderr, "encfs: no passphrase provided\n");
+        return 1;
+    }
+
+    /* Turn the any-length passphrase into a fixed KEY_SIZE (32) byte key. */
+    crypto_generichash(ctx.key, KEY_SIZE,
+                        (const unsigned char *) passphrase, strlen(passphrase),
+                        NULL, 0);
+
+    /* Wipe the passphrase from memory now that the key is derived. */
+    sodium_memzero(passphrase, strlen(passphrase));
+
+    /* backing_dir (argv[1]) is specific to this project, not a real FUSE
+     * option -- shift it out of argv so fuse_main only sees the program
+     * name, the mountpoint, and any genuine FUSE flags. */
+    for (int i = 1; i < argc - 1; i++) {
+        argv[i] = argv[i + 1];
+    }
+    argc--;
+
+    return fuse_main(argc, argv, &encfs_oper, &ctx);
 }
