@@ -61,3 +61,32 @@ tell you if `make`/`make test-crypto` still pass.
 15 (branch protection) is the last process piece — turn it on once CI
 (13) is green at least once, so "require CI to pass" has something real
 to point at.
+
+## Fresh-clone verification (issue #18, 2026-09-27)
+
+Note: the status table above predates chunks 4–11 landing — it still
+reads "skeleton only" for issues that have since been implemented and
+merged. Refreshing it is out of scope here; this section only records
+the issue #18 checkpoint itself.
+
+Performed a clean-room check per issue #18: cloned the repo into a new
+directory separate from any existing working copy, installed only the
+packages the README's Dependencies section lists, and followed the
+README's Build/Run/Tests sections exactly as written, with no manual
+workarounds.
+
+Results — every step matched the README exactly, no discrepancies found:
+
+- `apt install` (the exact command from the README) installs every
+  package actually required — nothing extra needed, nothing missing.
+- `make` builds `encfs` with zero errors and zero warnings.
+- `make test-crypto` — all 6 checks pass (covers issue #5).
+- `make test-fs` — all 6 checks pass (covers issue #17).
+- `make test` runs both suites together and passes.
+- Manual walkthrough of the README's Run section (`VAULT_KEY`, mount,
+  write, read back, `xxd` the backing file, unmount) behaved exactly as
+  documented at every step.
+
+No code or documentation fixes were needed as a result of this check —
+the README and Makefile match actual behavior on a machine that only
+has what the README says to install.
